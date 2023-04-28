@@ -1,11 +1,11 @@
 #ifndef TEST_DISPLAY
 
 /* WiFi settings */
-#define SSID_NAME "pwn3d"
-#define SSID_PASSWORD "PageFaultError"
+// #define SSID_NAME "pwn3d"
+// #define SSID_PASSWORD "PageFaultError"
 /* Google Photo settings */
 // replace your Google Photo share link
-#define GOOGLE_PHOTO_SHARE_LINK "https://photos.app.goo.gl/D9BxSJNtwNyTdr8q7"
+// #define GOOGLE_PHOTO_SHARE_LINK "https://photos.app.goo.gl/D9BxSJNtwNyTdr8q7"
 #define PHOTO_URL_PREFIX "https://lh3.googleusercontent.com/"
 #define SEEK_PATTERN "id=\"_ij\""
 #define SEARCH_PATTERN "\",[\"" PHOTO_URL_PREFIX
@@ -15,6 +15,8 @@
 #define HTTP_WAIT_COUNT 10                                 // number of times wait for next HTTP packet trunk
 #define PHOTO_URL_TEMPLATE PHOTO_URL_PREFIX "%s=w%d-h%d-c" // photo id, display width and height
 
+#define RESET_PIN 4
+
 #define MYW 600
 #define MYH 448
 
@@ -23,9 +25,10 @@
 #include "esp_jpg_decode.h"
 #include <esp_task_wdt.h>
 #include <WiFi.h>
-#include <WiFiMulti.h>
+#include "WiFiManager/WiFiManager.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <Preferences.h>
 #include "main.h"
 #include "epd/epd.hpp"
 #include "JPEGDEC.h"
@@ -71,9 +74,11 @@ Pixel_t color_palette[7] = {Pixel_t({0x00, 0x00, 0x00}),
                             Pixel_t({0xFF, 0x00, 0x00}),
                             Pixel_t({0xFF, 0xFF, 0x00}),
                             Pixel_t({0xFF, 0x80, 0x00})};
-WiFiMulti WiFiMulti;
+
 WiFiClientSecure *client = new WiFiClientSecure;
 
+WiFiManagerParameter parameter("gflink", "Link to Google album", "", 65535);
+Preferences preferences;
 
 /* HTTP */
 const char *headerkeys[] = {"Location"};
@@ -89,46 +94,7 @@ static int len, offset, photoCount;
 static unsigned long next_show_millis = 0;
 static bool shownPhoto = false;
 
-static size_t stream_reader(void *arg, size_t index, uint8_t *buf, size_t len)
-{
-  Stream *s = (Stream *)arg;
-  if (buf)
-  {
-    // Serial.printf("[HTTP] read: %d\n", len);
-    size_t a = s->available();
-    size_t r = 0;
-    while (r < len)
-    {
-      r += s->readBytes(buf + r, min((len - r), a));
-      delay(50);
-    }
-
-    return r;
-  }
-  else
-  {
-    // Serial.printf("[HTTP] skip: %d\n", len);
-    int l = len;
-    while (l--)
-    {
-      s->read();
-    }
-    return len;
-  }
-}
-
-static size_t buffer_reader(void *arg, size_t index, uint8_t *buf, size_t len)
-{
-  if (buf)
-  {
-    memcpy(buf, photoBuf + index, len);
-  }
-  return len;
-}
-
-
-
-
+String GOOGLE_PHOTO_SHARE_LINK = "";
 
 uint8_t find_closest_palette_index(Pixel_t pixel) {
   uint8_t closest = 0;
@@ -172,7 +138,6 @@ Pixel_t find_closest_palette_color(Pixel_t pixel) {
   return color_palette[index];
 }
 
-
 void shrink_info() {
   int offset = 0;
   for (int y = 0; y < MYH; y ++) {
@@ -204,7 +169,6 @@ void shrink_info() {
     }
   }
 }
-
 
 int drawFunc(JPEGDRAW* pdraw) {
   int offset = 0;
@@ -238,7 +202,6 @@ int drawFunc(JPEGDRAW* pdraw) {
   }
   return 1;
 }
-
 
 void setup_dither() {
   // Allocate memory for errors
@@ -316,13 +279,44 @@ int drawFunc_dither(JPEGDRAW* pdraw) {
   return 1;
 }
 
-
 void show() {
   shrink_info();
   Serial.println(F("Displaying..."));
   epd_clear(EPD_WHITE);
   epd_display_part(dispBuf, 0, 0, MYW, MYH);
   Serial.println(F("Done."));
+}
+
+/* WiFiManager Stuff*/ 
+void wmsetup() {
+  // Take care of reset key
+  pinMode(RESET_PIN, INPUT_PULLUP);
+  if (digitalRead(RESET_PIN) == LOW) {
+    Serial.println("Resetting WiFi settings");
+    WiFiManager wm;
+    wm.resetSettings();
+  }
+
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+  WiFiManager wm;
+  wm.addParameter(&parameter);
+  bool res = wm.autoConnect("AutoConnectAP","password"); // password protected ap;
+
+  if(!res) { Serial.println("Failed to connect"); } 
+  else {Serial.println("connected...yeey :)");}
+
+  if (strlen(parameter.getValue()) != 0) {
+    preferences.begin("appdata", false);
+    preferences.putString("gflink", parameter.getValue());
+    preferences.end();
+  }
+}
+
+String getLink() {
+  preferences.begin("appdata", true);
+  String link = preferences.getString("gflink");
+  preferences.end();
+  return link;
 }
 
 void setup() {
@@ -362,13 +356,14 @@ void setup() {
 
   // init WiFi
   Serial.print(F("Connecting to WiFi: "));
-  WiFi.mode(WIFI_STA);
-  WiFiMulti.addAP(SSID_NAME, SSID_PASSWORD);
-  while ((WiFiMulti.run() != WL_CONNECTED)) {
-    delay(500);
-    Serial.print('.');
-  }
+  wmsetup();
+  GOOGLE_PHOTO_SHARE_LINK = getLink();
   Serial.println(F(" done."));
+
+  Serial.print("Album link: ");
+  Serial.println(GOOGLE_PHOTO_SHARE_LINK);
+
+
 
   client->setCACert(rootCACertificate);
 
@@ -376,7 +371,6 @@ void setup() {
   esp_task_wdt_init((HTTP_TIMEOUT / 1000) + 1, true);
   enableLoopWDT();
 
-  
 
   // Init epd
   epd_init();
@@ -385,11 +379,7 @@ void setup() {
 }
 
 void loop() {
-  if (WiFiMulti.run() != WL_CONNECTED) {
-    // wait for WiFi connection
-    delay(500);
-  }
-  else if (millis() < next_show_millis) {
+  if (millis() < next_show_millis) {
     delay(1000);
   }
   else {
@@ -397,9 +387,9 @@ void loop() {
 
     if (!photoCount) {
       https.collectHeaders(headerkeys, sizeof(headerkeys) / sizeof(char *));
-      Serial.println(F(GOOGLE_PHOTO_SHARE_LINK));
+      Serial.println(GOOGLE_PHOTO_SHARE_LINK);
       Serial.println(F("[HTTPS] begin..."));
-      https.begin(*client, F(GOOGLE_PHOTO_SHARE_LINK));
+      https.begin(*client, GOOGLE_PHOTO_SHARE_LINK);
       https.setTimeout(HTTP_TIMEOUT);
 
       Serial.println(F("[HTTPS] GET..."));
