@@ -1,27 +1,6 @@
-#ifndef TEST_DISPLAY
-
-/* WiFi settings */
-// #define SSID_NAME "pwn3d"
-// #define SSID_PASSWORD "PageFaultError"
-/* Google Photo settings */
-// replace your Google Photo share link
-// #define GOOGLE_PHOTO_SHARE_LINK "https://photos.app.goo.gl/D9BxSJNtwNyTdr8q7"
-#define PHOTO_URL_PREFIX "https://lh3.googleusercontent.com/"
-#define SEEK_PATTERN "id=\"_ij\""
-#define SEARCH_PATTERN "\",[\"" PHOTO_URL_PREFIX
-#define PHOTO_LIMIT 10                                     // read first 10 photos to the list, ESP32 can add more
-#define PHOTO_ID_SIZE 159                                  // the photo ID should be 158 charaters long and then add a zero-tail
-#define HTTP_TIMEOUT 60000                                 // in ms, wait a while for server processing
-#define HTTP_WAIT_COUNT 10                                 // number of times wait for next HTTP packet trunk
-#define PHOTO_URL_TEMPLATE PHOTO_URL_PREFIX "%s=w%d-h%d-c" // photo id, display width and height
-
-#define RESET_PIN 4
-
-#define MYW 600
-#define MYH 448
-
 /* WiFi and HTTPS */
 #include <Arduino.h>
+#include <Wire.h>
 #include "esp_jpg_decode.h"
 #include <esp_task_wdt.h>
 #include <WiFi.h>
@@ -32,53 +11,21 @@
 #include "main.h"
 #include "epd/epd.hpp"
 #include "JPEGDEC.h"
-// HTTPS howto: https://techtutorialsx.com/2017/11/18/esp32-arduino-https-get-request/
-const char* rootCACertificate = \
-"-----BEGIN CERTIFICATE-----\n" \
-"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\n" \
-"-----END CERTIFICATE-----\n";
+#include "RtcDS3231.h"
 
+
+/* JPEG decoder*/
 JPEGDEC jpeg;
-Pixel_t color_palette[7] = {Pixel_t({0x00, 0x00, 0x00}),
-                            Pixel_t({0xFF, 0xFF, 0xFF}),
-                            Pixel_t({0x00, 0xFF, 0x00}),
-                            Pixel_t({0x00, 0x00, 0xFF}),
-                            Pixel_t({0xFF, 0x00, 0x00}),
-                            Pixel_t({0xFF, 0xFF, 0x00}),
-                            Pixel_t({0xFF, 0x80, 0x00})};
 
+/* WiFi client*/
 WiFiClientSecure *client = new WiFiClientSecure;
 
+/* WiFi manager */
 WiFiManagerParameter parameter("gflink", "Link to Google album", "", 65535);
 Preferences preferences;
+
+/* RTC */
+RtcDS3231<TwoWire> Rtc(Wire);
 
 /* HTTP */
 const char *headerkeys[] = {"Location"};
@@ -91,7 +38,6 @@ int16_t* errors;
 
 /* variables */
 static int len, offset, photoCount;
-static unsigned long next_show_millis = 0;
 static bool shownPhoto = false;
 
 String GOOGLE_PHOTO_SHARE_LINK = "";
@@ -289,14 +235,6 @@ void show() {
 
 /* WiFiManager Stuff*/ 
 void wmsetup() {
-  // Take care of reset key
-  pinMode(RESET_PIN, INPUT_PULLUP);
-  if (digitalRead(RESET_PIN) == LOW) {
-    Serial.println("Resetting WiFi settings");
-    WiFiManager wm;
-    wm.resetSettings();
-  }
-
   WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
   WiFiManager wm;
   wm.addParameter(&parameter);
@@ -319,8 +257,64 @@ String getLink() {
   return link;
 }
 
+void go_to_sleep() {
+  // Set next alarm
+  RtcDateTime now = Rtc.GetDateTime();
+  uint32_t update_interval = UPDATE_DAY*24*60*60 + UPDATE_HOUR*60*60 + UPDATE_MINUTE*60 + UPDATE_SECOND;
+  RtcDateTime alarmTime = now + update_interval; // into the future
+  DS3231AlarmOne alarm1(
+          alarmTime.Day(),
+          alarmTime.Hour(),
+          alarmTime.Minute(), 
+          alarmTime.Second(),
+          DS3231AlarmOneControl_HoursMinutesSecondsMatch);
+  Rtc.SetAlarmOne(alarm1);
+
+  // Go to sleep
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)RTC_WAKE_PIN, 0);
+  Serial.println("Going to sleep now");
+  esp_deep_sleep_start();
+  
+}
+
 void setup() {
   Serial.begin(115200);
+
+  // Setup RTC
+  Rtc.Begin(I2C_SDA, I2C_SCL);
+  Rtc.LatchAlarmsTriggeredFlags();
+  Rtc.Enable32kHzPin(false);
+  Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeAlarmBoth);
+
+  // Check wake up reason
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("Woke up from RTC");
+    // Clear flag
+    Rtc.LatchAlarmsTriggeredFlags();
+  }
+  else {
+    // Pushed reset button
+    Serial.println("Resetting WiFi settings");
+    WiFiManager wm;
+    wm.resetSettings();
+
+    RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+    if (!Rtc.IsDateTimeValid()) {
+      if (Rtc.LastError() != 0) {
+        Serial.print("RTC communications error = ");
+        Serial.println(Rtc.LastError());
+      } else {
+        Serial.println("RTC lost confidence in the DateTime!");
+        Serial.println("Setting time...");
+        Rtc.SetDateTime(compiled);
+      }
+    }
+    if (!Rtc.GetIsRunning()) {
+      Serial.println("RTC was not actively running, starting now");
+      Rtc.SetIsRunning(true);
+    }
+  }
 
   // init display
   int w = MYW;
@@ -363,14 +357,7 @@ void setup() {
   Serial.print("Album link: ");
   Serial.println(GOOGLE_PHOTO_SHARE_LINK);
 
-
-
   client->setCACert(rootCACertificate);
-
-  // set WDT timeout a little bit longer than HTTP timeout
-  esp_task_wdt_init((HTTP_TIMEOUT / 1000) + 1, true);
-  enableLoopWDT();
-
 
   // Init epd
   epd_init();
@@ -379,166 +366,154 @@ void setup() {
 }
 
 void loop() {
-  if (millis() < next_show_millis) {
-    delay(1000);
-  }
-  else {
-    HTTPClient https;
+  HTTPClient https;
 
-    if (!photoCount) {
-      https.collectHeaders(headerkeys, sizeof(headerkeys) / sizeof(char *));
-      Serial.println(GOOGLE_PHOTO_SHARE_LINK);
+  if (!photoCount) {
+    https.collectHeaders(headerkeys, sizeof(headerkeys) / sizeof(char *));
+    Serial.println(GOOGLE_PHOTO_SHARE_LINK);
+    Serial.println(F("[HTTPS] begin..."));
+    https.begin(*client, GOOGLE_PHOTO_SHARE_LINK);
+    https.setTimeout(HTTP_TIMEOUT);
+
+    Serial.println(F("[HTTPS] GET..."));
+    int httpCode = https.GET();
+
+    Serial.print(F("[HTTPS] return code: "));
+    Serial.println(httpCode);
+
+    // redirect
+    if (httpCode == HTTP_CODE_FOUND) {
+      char redirectUrl[256];
+      strcpy(redirectUrl, https.header((size_t)0).c_str());
+      https.end();
+      Serial.print(F("redirectUrl: "));
+      Serial.println(redirectUrl);
+
       Serial.println(F("[HTTPS] begin..."));
-      https.begin(*client, GOOGLE_PHOTO_SHARE_LINK);
+      https.begin(*client, redirectUrl);
       https.setTimeout(HTTP_TIMEOUT);
 
       Serial.println(F("[HTTPS] GET..."));
-      int httpCode = https.GET();
+      httpCode = https.GET();
 
-      Serial.print(F("[HTTPS] return code: "));
+      Serial.print(F("[HTTPS] GET... code: "));
       Serial.println(httpCode);
+    }
 
-      // redirect
-      if (httpCode == HTTP_CODE_FOUND) {
-        char redirectUrl[256];
-        strcpy(redirectUrl, https.header((size_t)0).c_str());
-        https.end();
-        Serial.print(F("redirectUrl: "));
-        Serial.println(redirectUrl);
+    if (httpCode != HTTP_CODE_OK) {
+      Serial.print(F("[HTTPS] GET... failed, error: "));
+      Serial.println(https.errorToString(httpCode));
+      // Go to sleep
+      go_to_sleep();
 
-        Serial.println(F("[HTTPS] begin..."));
-        https.begin(*client, redirectUrl);
-        https.setTimeout(HTTP_TIMEOUT);
-
-        Serial.println(F("[HTTPS] GET..."));
-        httpCode = https.GET();
-
-        Serial.print(F("[HTTPS] GET... code: "));
-        Serial.println(httpCode);
-      }
-
-      if (httpCode != HTTP_CODE_OK) {
-        Serial.print(F("[HTTPS] GET... failed, error: "));
-        Serial.println(https.errorToString(httpCode));
-        delay(9000); // don't repeat the wrong thing too fast
-        // return;
-      }
-      else {
-        // HTTP header has been send and Server response header has been handled
-
-        //find photo ID leading pattern: ",["https://lh3.googleusercontent.com/
-        photoCount = 0;
-        int wait_count = 0;
-        bool foundStartingPoint = false;
-        WiFiClient *stream = https.getStreamPtr();
-        stream->setTimeout(10);
-        while ((photoCount < PHOTO_LIMIT) && (wait_count < HTTP_WAIT_COUNT)) {
-          if (!stream->available()) {
-            Serial.println(F("Wait stream->available()"));
-            ++wait_count;
-            delay(200);
+    }
+    else {
+      // HTTP header has been send and Server response header has been handled
+      //find photo ID leading pattern: ",["https://lh3.googleusercontent.com/
+      photoCount = 0;
+      int wait_count = 0;
+      bool foundStartingPoint = false;
+      WiFiClient *stream = https.getStreamPtr();
+      stream->setTimeout(10);
+      while ((photoCount < PHOTO_LIMIT) && (wait_count < HTTP_WAIT_COUNT)) {
+        if (!stream->available()) {
+          Serial.println(F("Wait stream->available()"));
+          ++wait_count;
+          delay(200);
+        }
+        else {
+          if (!foundStartingPoint) {
+            Serial.println(F("finding seek pattern: " SEEK_PATTERN));
+            if (stream->find(SEEK_PATTERN))
+            {
+              Serial.println(F("found seek pattern: " SEEK_PATTERN));
+              foundStartingPoint = true;
+            }
           }
           else {
-            if (!foundStartingPoint) {
-              Serial.println(F("finding seek pattern: " SEEK_PATTERN));
-              if (stream->find(SEEK_PATTERN))
-              {
-                Serial.println(F("found seek pattern: " SEEK_PATTERN));
-                foundStartingPoint = true;
+            if (stream->find(SEARCH_PATTERN)) {
+              int i = -1;
+              char c = stream->read();
+              while (c != '\"') {
+                photoIdList[photoCount][++i] = c;
+                c = stream->read();
               }
-            }
-            else {
-              if (stream->find(SEARCH_PATTERN)) {
-                int i = -1;
-                char c = stream->read();
-                while (c != '\"') {
-                  photoIdList[photoCount][++i] = c;
-                  c = stream->read();
-                }
-                photoIdList[photoCount][++i] = 0; // zero tail
-                Serial.println(photoIdList[photoCount]);
-                ++photoCount;
-              }
+              photoIdList[photoCount][++i] = 0; // zero tail
+              Serial.println(photoIdList[photoCount]);
+              ++photoCount;
             }
           }
-          // notify WDT still working
-          feedLoopWDT();
         }
-        Serial.print(photoCount);
-        Serial.println(F(" photo ID added."));
+      }
+      Serial.print(photoCount);
+      Serial.println(F(" photo ID added."));
+    }
+    https.end();
+  }
+  else // photoCount > 0
+  {
+    char photoUrl[256];
+
+    // setup url query value with LCD dimension
+    int randomIdx = random(photoCount);
+    char filename[16];
+    sprintf(filename, "/%d.jpg", randomIdx);
+    sprintf(photoUrl, PHOTO_URL_TEMPLATE, photoIdList[randomIdx], MYW, MYH);
+    Serial.print(F("Random selected photo #"));
+    Serial.print(randomIdx);
+    Serial.print(':');
+    Serial.println(photoUrl);
+
+    Serial.println(F("[HTTP] begin..."));
+    https.begin(*client, photoUrl);
+    https.setTimeout(HTTP_TIMEOUT);
+    Serial.println(F("[HTTP] GET..."));
+    int httpCode = https.GET();
+
+    Serial.print(F("[HTTP] GET... code: "));
+    Serial.println(httpCode);
+    // HTTP header has been send and Server response header has been handled
+    if (httpCode != HTTP_CODE_OK) {
+      Serial.print(F("[HTTP] GET... failed, error: "));
+      Serial.println(https.errorToString(httpCode));
+      delay(9000); // don't repeat the wrong thing too fast
+    }
+    else {
+      // get lenght of document (is -1 when Server sends no Content-Length header)
+      len = https.getSize();
+      Serial.print(F("[HTTP] size: "));
+      Serial.println(len);
+
+      if (len <= 0) {
+        Serial.print(F("[HTTP] Unknow content size: "));
+        Serial.println(len);
+      }
+      else {
+        // get tcp stream
+        WiFiClient *photoHttpsStream = https.getStreamPtr();
+
+        // JPG decode option 1: buffer_reader, use much more memory but faster
+        size_t reads = 0;
+        char buf;
+        while (reads < len)
+        {
+          size_t r = photoHttpsStream->readBytes(photoBuf + reads, (len - reads));
+          reads += r;
+          Serial.print(F("Photo buffer read: "));
+          Serial.print(reads);
+          Serial.print('/');
+          Serial.println(len);
+          size_t available = photoHttpsStream->available();
+        }
+        if (jpeg.openRAM(photoBuf, len, drawFunc_dither)) {
+          Serial.println(F("jpeg.openRAM OK"));
+          jpeg.decode(0,0,0); 
+        }
       }
       https.end();
     }
-    else // photoCount > 0
-    {
-      char photoUrl[256];
-
-      // setup url query value with LCD dimension
-      int randomIdx = random(photoCount);
-      char filename[16];
-      sprintf(filename, "/%d.jpg", randomIdx);
-      sprintf(photoUrl, PHOTO_URL_TEMPLATE, photoIdList[randomIdx], MYW, MYH);
-      Serial.print(F("Random selected photo #"));
-      Serial.print(randomIdx);
-      Serial.print(':');
-      Serial.println(photoUrl);
-
-      Serial.println(F("[HTTP] begin..."));
-      https.begin(*client, photoUrl);
-      https.setTimeout(HTTP_TIMEOUT);
-      Serial.println(F("[HTTP] GET..."));
-      int httpCode = https.GET();
-
-      Serial.print(F("[HTTP] GET... code: "));
-      Serial.println(httpCode);
-      // HTTP header has been send and Server response header has been handled
-      if (httpCode != HTTP_CODE_OK) {
-        Serial.print(F("[HTTP] GET... failed, error: "));
-        Serial.println(https.errorToString(httpCode));
-        delay(9000); // don't repeat the wrong thing too fast
-      }
-      else {
-        // get lenght of document (is -1 when Server sends no Content-Length header)
-        len = https.getSize();
-        Serial.print(F("[HTTP] size: "));
-        Serial.println(len);
-
-        if (len <= 0) {
-          Serial.print(F("[HTTP] Unknow content size: "));
-          Serial.println(len);
-        }
-        else {
-          // get tcp stream
-          WiFiClient *photoHttpsStream = https.getStreamPtr();
-
-          // JPG decode option 1: buffer_reader, use much more memory but faster
-          size_t reads = 0;
-          char buf;
-          while (reads < len)
-          {
-            size_t r = photoHttpsStream->readBytes(photoBuf + reads, (len - reads));
-            reads += r;
-            Serial.print(F("Photo buffer read: "));
-            Serial.print(reads);
-            Serial.print('/');
-            Serial.println(len);
-            size_t available = photoHttpsStream->available();
-          }
-          if (jpeg.openRAM(photoBuf, len, drawFunc_dither)) {
-            Serial.println(F("jpeg.openRAM OK"));
-            jpeg.decode(0,0,0); 
-          }
-        }
-        https.end();
-      }
-      show();
-      shownPhoto = true;
-      next_show_millis = ((millis() / 60000L) + 3) * 60000L; // next minute
-    }
+    show();
+    shownPhoto = true;
+    go_to_sleep();
   }
-  // notify WDT still working
-  feedLoopWDT();
 }
-
-
-#endif
