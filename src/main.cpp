@@ -228,8 +228,10 @@ int drawFunc_dither(JPEGDRAW* pdraw) {
 void show() {
   shrink_info();
   Serial.println(F("Displaying..."));
+  // epd_reset();
   epd_clear(EPD_WHITE);
   epd_display_part(dispBuf, 0, 0, MYW, MYH);
+  epd_sleep();
   Serial.println(F("Done."));
 }
 

@@ -16,9 +16,9 @@
 #define MYH 448
 
 #define UPDATE_DAY 0
-#define UPDATE_HOUR 0
+#define UPDATE_HOUR 6
 #define UPDATE_MINUTE 0
-#define UPDATE_SECOND 30
+#define UPDATE_SECOND 0
 
 typedef struct Pixel {
   uint8_t r;
